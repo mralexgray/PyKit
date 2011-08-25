@@ -13,102 +13,129 @@ from PyObjCTools import AppHelper
 from cocoa_dom import ScriptBridge
 
 def setup_monocle():
-    def not_implemented(*args, **kwargs):
-        print "NOT IMPLEMENTED!"
-        raise NotImplementedError
-    import monocle.stack.eventloop
-    monocle.stack.eventloop.queue_task = AppHelper.callLater
-    monocle.stack.eventloop.run = not_implemented
-    monocle.stack.eventloop.halt = not_implemented
+	def not_implemented(*args, **kwargs):
+		print "NOT IMPLEMENTED!"
+		raise NotImplementedError
+	import monocle.stack.eventloop
+	monocle.stack.eventloop.queue_task = AppHelper.callLater
+	monocle.stack.eventloop.run = not_implemented
+	monocle.stack.eventloop.halt = not_implemented
 
 def init():
-    setup_monocle()
-    AppKit.NSApplication.sharedApplication()
+	setup_monocle()
+	AppKit.NSApplication.sharedApplication()
 
 def terminate():
-    AppKit.NSApp.terminate_(AppKit.NSApp)
+	AppKit.NSApp.terminate_(AppKit.NSApp)
 
 class WebKitWindow(object):
-    def _set_up_window(self, rect):
-        assert len(rect) == 4
-        mask = ( AppKit.NSTitledWindowMask |
-                 AppKit.NSClosableWindowMask |
-                 AppKit.NSMiniaturizableWindowMask |
-                 AppKit.NSResizableWindowMask )
-        ns_window = AppKit.NSWindow.alloc()
-        ns_window = ns_window.initWithContentRect_styleMask_backing_defer_(
-                Foundation.NSMakeRect(*rect),
-                mask,
-                AppKit.NSBackingStoreBuffered,
-                False)
+	def _set_up_window(self, rect):
+		assert len(rect) == 4
+		mask = ( AppKit.NSTitledWindowMask |
+				AppKit.NSClosableWindowMask |
+				AppKit.NSMiniaturizableWindowMask |
+				AppKit.NSResizableWindowMask )
+		ns_window = AppKit.NSWindow.alloc()
+		ns_window = ns_window.initWithContentRect_styleMask_backing_defer_(
+				Foundation.NSMakeRect(*rect),
+				mask,
+				AppKit.NSBackingStoreBuffered,
+				False)
 
-        webview = WebKit.WebView.alloc().init()
-        ns_window.setContentView_(webview)
-        ns_window.makeKeyAndOrderFront_(AppKit.NSApp)
+		webview = WebKit.WebView.alloc().init()
+		ns_window.setContentView_(webview)
+		ns_window.makeKeyAndOrderFront_(AppKit.NSApp)
+		#from webkit2png, needs to be implemented, tested.
+		def getURL(self,webview):
+			if self.urls:
+			if self.urls[0] == '-':
+				url = sys.stdin.readline().rstrip()
+				if not url: AppKit.NSApplication.sharedApplication().terminate_(None)
+			else: 
+				url = self.urls.pop(0)
+		 else:
+			AppKit.NSApplication.sharedApplication().terminate_(None)
+		 print "Fetching", url, "..."
+			self.resetWebview(webview)
+			webview.mainFrame().loadRequest_(Foundation.NSURLRequest.requestWithURL_(Foundation.NSURL.URLWithString_(url)))
+			if not webview.mainFrame().provisionalDataSource():
+				print " ... not a proper url?"
+				self.getURL(webview)
 
-        url = AppKit.NSURL.URLWithString_('about:blank').retain()
-        webview.mainFrame().loadHTMLString_baseURL_("", url)
+		def resetWebview(self,webview):
+			rect = Foundation.NSMakeRect(0,0,self.options.initWidth,self.options.initHeight)
+			webview.window().setContentSize_((self.options.initWidth,self.options.initHeight))
+			webview.setFrame_(rect)
 
-        self.ns_window = ns_window.retain()
-        self.webview = webview.retain()
+		def resizeWebview(self,view):
+			view.window().display()
+			view.window().setContentSize_(view.bounds().size)
+			view.setFrame_(view.bounds())
+		#end webkit2png insert
 
-        self.js_bridge = ScriptBridge(self.webview.windowScriptObject())
+		url = AppKit.NSURL.URLWithString_('about:blank').retain()
+		webview.mainFrame().loadHTMLString_baseURL_("", url)
 
-    def is_ready(self):
-        return bool(self.webview.mainFrameDocument() is not None)
+		self.ns_window = ns_window.retain()
+		self.webview = webview.retain()
 
-    @property
-    def window(self):
-        return self.js_bridge.window
+		self.js_bridge = ScriptBridge(self.webview.windowScriptObject())
+
+	def is_ready(self):
+		return bool(self.webview.mainFrameDocument() is not None)
+
+	@property
+	def window(self):
+		return self.js_bridge.window
 
 @_o
 def create_window(size=(400, 400), position=(900, 20)):
-    w = WebKitWindow()
-    w._set_up_window(position + size)
+	w = WebKitWindow()
+	w._set_up_window(position + size)
 
-    import monocle.util
-    while not w.is_ready():
-        yield monocle.util.sleep(.1)
+	import monocle.util
+	while not w.is_ready():
+		yield monocle.util.sleep(.1)
 
-    yield monocle.core.Return(w)
+	yield monocle.core.Return(w)
 
 def app_loop():
-    AppHelper.runEventLoop()
+	AppHelper.runEventLoop()
 
 class EventHandlerWrapper(Foundation.NSObject):
-    @classmethod
-    def handlerWithCallback_(cls, callback):
-        self = cls.alloc().init()
-        self._callback = callback
-        return self
+	@classmethod
+	def handlerWithCallback_(cls, callback):
+		self = cls.alloc().init()
+		self._callback = callback
+		return self
 
-    def handleEvent_(self, event):
-        self._callback(event)
+	def handleEvent_(self, event):
+		self._callback(event)
 
 def add_event_listener(node, event_name, callback, capture=False):
-    handler = EventHandlerWrapper.handlerWithCallback_(callback)
-    node.addEventListener___(event_name, handler, capture)
+	handler = EventHandlerWrapper.handlerWithCallback_(callback)
+	node.addEventListener___(event_name, handler, capture)
 
 def exceptions_to_stderr(func):
-    @wraps(func)
-    @_o
-    def wrapper(*args, **kwargs):
-        try:
-            yield func(*args, **kwargs)
-        except Exception, e:
-            print>>sys.stderr, monocle.core.format_tb(e)
+	@wraps(func)
+	@_o
+	def wrapper(*args, **kwargs):
+		try:
+			yield func(*args, **kwargs)
+		except Exception, e:
+			print>>sys.stderr, monocle.core.format_tb(e)
 
-    return wrapper
+	return wrapper
 
 class PyKitApp(object):
-    def __init__(self):
-        init()
+	def __init__(self):
+		init()
 
-    def run_loop(self):
-        app_loop()
+	def run_loop(self):
+		app_loop()
 
-    def create_window(self, **kwargs):
-        return create_window(**kwargs)
+	def create_window(self, **kwargs):
+		return create_window(**kwargs)
 
-    def terminate(self):
-        terminate()
+	def terminate(self):
+		terminate()
